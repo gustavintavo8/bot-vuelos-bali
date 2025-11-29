@@ -21,9 +21,9 @@ ARCHIVO_HISTORIAL = "historial_extendido.csv"
 # FECHAS Y FILTROS
 FECHA_INICIO_BUSQUEDA = "2026-07-08" 
 DIAS_A_ESCANEAR = 5   
-DIAS_ESTANCIA = 15    
-MAX_HORAS = 26.0      
-PRECIO_MAXIMO = 1300
+DIAS_ESTANCIA = 10    
+MAX_HORAS = 20.0      
+PRECIO_MAXIMO = 1100
 
 def enviar_telegram(mensaje):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
