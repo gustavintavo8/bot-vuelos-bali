@@ -29,7 +29,7 @@ Si quieres ejecutarlo en tu ordenador:
 
 1.  **Clonar el repositorio:**
     ```bash
-    git clone [https://github.com/TU_USUARIO/bot-vuelos-bali.git](https://github.com/TU_USUARIO/bot-vuelos-bali.git)
+    git clone [https://github.com/gustavintavo8/bot-vuelos-bali.git](https://github.com/gustavintavo8/bot-vuelos-bali.git)
     cd bot-vuelos-bali
     ```
 
