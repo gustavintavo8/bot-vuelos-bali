@@ -34,5 +34,6 @@ jobs:
         run: |
           git config --global user.name 'Bot de Vuelos'
           git config --global user.email 'bot@vuelos.com'
-          git add historial_vuelos.csv
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Actualizar precios diarios" && git push)
+          git add historial_extendido.csv
+          # -------------------------------------------------------
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Actualizar datos extendidos" && git push)
