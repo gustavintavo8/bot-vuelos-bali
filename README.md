@@ -1,37 +1,35 @@
-# ✈️ Bali Flight Tracker & Trend Bot
+# ✈️ Bali Flight Tracker & Analytics Dashboard
 
-> Un bot automatizado en Python que rastrea precios de vuelos diarios, analiza tendencias históricas y notifica las mejores ofertas vía Telegram.
+> Un sistema completo de inteligencia de vuelos que rastrea precios diarios, detecta tendencias, notifica ofertas por Telegram y visualiza los datos en una web interactiva.
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![Amadeus API](https://img.shields.io/badge/API-Amadeus-orange.svg)
+![Streamlit](https://img.shields.io/badge/Frontend-Streamlit-red.svg)
 ![GitHub Actions](https://img.shields.io/badge/Automation-GitHub%20Actions-green.svg)
 
 ## 📖 Descripción
 
-Este proyecto es una herramienta de **inteligencia de precios de vuelos**. A diferencia de las alertas tradicionales, este script no solo busca el precio actual, sino que:
+Este proyecto va más allá de un simple rastreador. Es una suite completa de monitorización de precios para tu viaje a Bali:
 
-1.  **Construye un historial:** Guarda los precios día a día en un archivo `historial_vuelos.csv`.
-2.  **Detecta tendencias:** Compara el precio de hoy con tu media histórica para decirte si el vuelo está bajando (📉) o subiendo (📈).
-3.  **Filtra inteligentemente:** Solo busca vuelos con escalas cortas y duración optimizada (<26h).
-4.  **Te avisa:** Si detecta una bajada de precio o una nueva oportunidad, envía un mensaje detallado a tu **Telegram** con un enlace directo de compra a Skyscanner.
-5.  **100% Automatizado:** Se ejecuta cada mañana en la nube usando **GitHub Actions** (gratis).
+1.  **Recopilación de Big Data:** El bot se ejecuta diariamente y extrae datos técnicos detallados (precio base vs impuestos, duración exacta en minutos, número de vuelo, modelo de avión, asientos disponibles...).
+2.  **Base de Datos Histórica:** Guarda todo en `historial_extendido.csv`, creando un registro permanente de la evolución del mercado.
+3.  **Alertas Inteligentes:** Si detecta una bajada real respecto a la media histórica, te envía un aviso inmediato a **Telegram**.
+4.  **Web de Estadísticas (Dashboard):** Incluye una aplicación web (`app.py`) construida con **Streamlit** para visualizar gráficas de tendencias, mejores días para volar y comparativas de aerolíneas.
+5.  **100% Automatizado:** GitHub Actions actualiza los datos cada mañana y Streamlit Cloud actualiza la web automáticamente.
 
-## 🚀 Cómo funciona
+## 🚀 Arquitectura del Proyecto
 
-El script `trend_tracker.py` realiza los siguientes pasos:
-1.  Conecta con la **API de Amadeus** para obtener precios reales de aerolíneas.
-2.  Busca vuelos desde **Madrid (MAD)** y **Barcelona (BCN)** hacia **Bali (DPS)** (configurable).
-3.  Aplica filtros estrictos de duración y escalas.
-4.  Guarda los resultados en `historial_vuelos.csv` y hace un *commit* automático al repositorio para no perder los datos.
-5.  Si encuentra una oferta mejor que la media histórica, envía una alerta al bot de Telegram configurado.
+1.  **El Cerebro (`trend_tracker.py`):** Conecta con la API de Amadeus, filtra vuelos (duración < 26h, pocas escalas) y guarda los datos en CSV.
+2.  **La Automatización (GitHub Actions):** Ejecuta el cerebro cada día a las 08:00 AM UTC y guarda los cambios en el repositorio.
+3.  **La Visualización (`app.py`):** Lee el CSV generado y muestra un cuadro de mandos interactivo accesible desde cualquier navegador.
 
 ## 🛠️ Instalación y Uso Local
 
-Si quieres probarlo en tu ordenador antes de subirlo a la nube:
+Si quieres ejecutarlo en tu ordenador:
 
 1.  **Clonar el repositorio:**
     ```bash
-    git clone [https://github.com/TU_USUARIO/bot-vuelos-bali.git](https://github.com/TU_USUARIO/bot-vuelos-bali.git)
+    git clone [https://github.com/gustavintavo8/bot-vuelos-bali.git](https://github.com/gustavintavo8/bot-vuelos-bali.git)
     cd bot-vuelos-bali
     ```
 
@@ -40,48 +38,48 @@ Si quieres probarlo en tu ordenador antes de subirlo a la nube:
     pip install -r requirements.txt
     ```
 
-3.  **Configurar Variables de Entorno:**
-    El script necesita tus claves para funcionar. En Linux/Mac:
+3.  **Configurar Variables de Entorno (Solo para el Rastreador):**
     ```bash
     export AMADEUS_API_KEY="tu_api_key"
     export AMADEUS_API_SECRET="tu_api_secret"
-    # Opcionales para local (si no, solo imprime en consola)
     export TELEGRAM_TOKEN="tu_token"
     export TELEGRAM_CHAT_ID="tu_id"
     ```
-    *(En Windows PowerShell usa `$env:AMADEUS_API_KEY="tu_clave"`)*
+    *(En Windows PowerShell usa `$env:VARIABLE="valor"`)*
 
-4.  **Ejecutar:**
+4.  **Ejecutar el Rastreador (Backend):**
     ```bash
     python trend_tracker.py
     ```
 
-## ☁️ Automatización con GitHub Actions (Recomendado)
+5.  **Ejecutar la Web de Estadísticas (Frontend):**
+    ```bash
+    python -m streamlit run app.py
+    ```
 
-Para que el bot trabaje solo todos los días:
+## ☁️ Despliegue en la Nube (Gratis)
 
-1.  Ve a la pestaña **Settings** de tu repositorio en GitHub.
-2.  Entra en **Secrets and variables** > **Actions**.
-3.  Crea los siguientes **New repository secrets**:
+### Parte 1: El Bot de Datos (GitHub Actions)
+Para que el bot recopile datos solo:
+1.  Ve a **Settings** > **Secrets and variables** > **Actions** en tu repositorio.
+2.  Añade tus claves: `AMADEUS_API_KEY`, `AMADEUS_API_SECRET`, `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`.
+3.  El bot se ejecutará automáticamente todos los días.
 
-| Nombre del Secreto | Descripción |
-|--------------------|-------------|
-| `AMADEUS_API_KEY` | Tu API Key de [Amadeus Developers](https://developers.amadeus.com/). |
-| `AMADEUS_API_SECRET` | Tu API Secret de Amadeus. |
-| `TELEGRAM_TOKEN` | El token que te dio @BotFather en Telegram. |
-| `TELEGRAM_CHAT_ID` | Tu ID numérico de usuario (obtenlo con @userinfobot). |
-
-Una vez configurado, el flujo de trabajo (`.github/workflows/main.yml`) se ejecutará automáticamente **todos los días a las 08:00 UTC**.
+### Parte 2: La Web de Estadísticas (Streamlit Cloud)
+Para publicar tu web y compartirla:
+1.  Ve a [share.streamlit.io](https://share.streamlit.io/) y conecta con GitHub.
+2.  Selecciona este repositorio.
+3.  Archivo principal: `app.py`.
+4.  ¡Dale a **Deploy**! Tu web se actualizará sola cada vez que el bot guarde nuevos datos.
 
 ## ⚙️ Personalización
 
-Puedes editar las variables en la parte superior de `trend_tracker.py` para adaptar el viaje a tus necesidades:
+Puedes editar las constantes en `trend_tracker.py` para cambiar el destino o filtros:
 
 ```python
 ORIGENES = ["MAD", "BCN"]      # Aeropuertos de salida
-DESTINO = "DPS"                # Código IATA del destino (ej: JFK, TYO)
-FECHA_INICIO_BUSQUEDA = "2026-07-08" # Fecha aproximada
-DIAS_A_ESCANEAR = 5            # Cuántos días flexibles buscar
-DIAS_ESTANCIA = 15             # Duración del viaje
-MAX_HORAS = 26.0               # Duración máxima permitida
-PRECIO_MAXIMO = 1300           # Presupuesto límite
+DESTINO = "DPS"                # Destino
+FECHA_INICIO_BUSQUEDA = "2026-07-08" 
+DIAS_A_ESCANEAR = 5            # Ventana de flexibilidad
+MAX_HORAS = 26.0               # Duración máxima
+PRECIO_MAXIMO = 1300
