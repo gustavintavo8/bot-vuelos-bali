@@ -1,2 +1,5 @@
 amadeus
 requests
+streamlit
+pandas
+plotly
