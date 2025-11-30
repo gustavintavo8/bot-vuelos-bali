@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # --- CONSTANTES ---
-PRECIO_OBJETIVO = 750
+PRECIO_OBJETIVO_DEFAULT = 750
 ASIENTOS_CRITICOS = 5
 
 # --- CARGAR AEROPUERTOS ---
@@ -324,8 +324,9 @@ with st.sidebar:
     
     st.markdown("---")
     st.markdown("### 🎯 Precio Objetivo")
-    st.metric("Target", f"{PRECIO_OBJETIVO} €")
-    vuelos_bajo = len(df_filtrado[df_filtrado['precio_total'] < PRECIO_OBJETIVO])
+    precio_objetivo = st.number_input("Precio objetivo (?)", value=PRECIO_OBJETIVO_DEFAULT, step=25, min_value=0)
+    st.metric("Target", f"{precio_objetivo:.0f} €")
+    vuelos_bajo = len(df_filtrado[df_filtrado['precio_total'] < precio_objetivo])
     if vuelos_bajo > 0:
         st.success(f"🔥 {vuelos_bajo} vuelo(s) bajo objetivo!")
     
@@ -376,7 +377,7 @@ st.markdown("###")
 # --- KPIS ---
 col1, col2, col3, col4, col5 = st.columns(5)
 vuelo_barato = df_filtrado.loc[df_filtrado['precio_total'].idxmin()]
-delta_objetivo = vuelo_barato['precio_total'] - PRECIO_OBJETIVO
+delta_objetivo = vuelo_barato['precio_total'] - precio_objetivo
 
 col1.metric("Mejor Precio", f"{df_filtrado['precio_total'].min():.0f} €", 
             delta=f"{delta_objetivo:.0f}€ vs objetivo", 
@@ -402,7 +403,7 @@ with tab1:
         
         for idx, (_, vuelo) in enumerate(top_ofertas.iterrows()):
             with cols[idx]:
-                border = "#00AA00" if vuelo['precio_total'] < PRECIO_OBJETIVO else "#111111"
+                border = "#00AA00" if vuelo['precio_total'] < precio_objetivo else "#111111"
                 st.markdown(f"""
                 <div style="border: 2px solid {border}; border-radius: 10px; padding: 15px; background: #f9f9f9;">
                     <h3>{medallas[idx]} Score: {vuelo['score']}/100</h3>
@@ -438,13 +439,13 @@ with tab1:
     with c1:
         df_dias = df_filtrado.groupby('fecha_salida')['precio_total'].min().reset_index()
         fig_bar = px.bar(df_dias, x='fecha_salida', y='precio_total')
-        fig_bar.add_hline(y=PRECIO_OBJETIVO, line_dash="dash", line_color="red")
+        fig_bar.add_hline(y=precio_objetivo, line_dash="dash", line_color="red")
         fig_bar.update_layout(template='plotly_white', paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_bar, use_container_width=True)
     
     with c2:
         fig_line = px.line(df_filtrado, x='fecha_consulta', y='precio_total', color='origen')
-        fig_line.add_hline(y=PRECIO_OBJETIVO, line_dash="dash", line_color="red")
+        fig_line.add_hline(y=precio_objetivo, line_dash="dash", line_color="red")
         fig_line.update_layout(template='plotly_white', paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_line, use_container_width=True)
 
@@ -462,7 +463,7 @@ with tab3:
 with tab4:
     df_display = df_filtrado.copy()
     df_display['score'] = df_display.apply(calcular_score_vuelo, axis=1)
-    df_display['🎯'] = df_display['precio_total'] < PRECIO_OBJETIVO
+    df_display['🎯'] = df_display['precio_total'] < precio_objetivo
     df_display['🎯'] = df_display['🎯'].map({True: '✅', False: '❌'})
     
     # Ordenamos columnas y aplicamos configuración visual bonita
