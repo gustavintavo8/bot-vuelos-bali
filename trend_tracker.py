@@ -59,6 +59,23 @@ def analizar_vuelo(vuelo):
     aerolinea_code = vuelo['validatingAirlineCodes'][0]
     numero_vuelo = f"{segmentos[0]['carrierCode']}{segmentos[0]['number']}"
     
+    # 🗺️ NUEVO: Extraer aeropuertos de escala para el mapa
+    aeropuertos_ruta = []
+    for seg in segmentos:
+        # Aeropuerto de salida de cada segmento
+        aeropuertos_ruta.append(seg['departure']['iataCode'])
+    # Añadir el último aeropuerto de llegada
+    aeropuertos_ruta.append(segmentos[-1]['arrival']['iataCode'])
+    
+    # Convertir a string separado por comas: "MAD,DXB,DPS"
+    ruta_completa = ",".join(aeropuertos_ruta)
+    
+    # Extraer solo las escalas (sin origen ni destino)
+    if len(aeropuertos_ruta) > 2:
+        aeropuertos_escala = ",".join(aeropuertos_ruta[1:-1])
+    else:
+        aeropuertos_escala = ""  # Vuelo directo
+    
     # 3. Precios y Clase
     precio_total = float(vuelo['price']['total'])
     precio_base = float(vuelo['price']['base'])
@@ -77,6 +94,8 @@ def analizar_vuelo(vuelo):
         "llegada_iso": llegada,
         "duracion_min": duracion_total_minutos,
         "escalas": escalas,
+        "aeropuertos_escala": aeropuertos_escala,  # NUEVO
+        "ruta_completa": ruta_completa,  # NUEVO
         "aerolinea": aerolinea_code,
         "num_vuelo": numero_vuelo,
         "precio_total": precio_total,
@@ -115,7 +134,8 @@ def gestionar_historial(origen, datos_vuelo, fecha_salida):
     campos = [
         "fecha_consulta", "origen", "destino", "fecha_salida", 
         "hora_salida", "hora_llegada", "duracion_minutos", 
-        "escalas", "aerolinea", "numero_vuelo", "clase", "asientos_disponibles",
+        "escalas", "aeropuertos_escala", "ruta_completa",  # NUEVO: campos de ruta
+        "aerolinea", "numero_vuelo", "clase", "asientos_disponibles",
         "precio_total", "precio_base", "impuestos"
     ]
     
@@ -126,7 +146,7 @@ def gestionar_historial(origen, datos_vuelo, fecha_salida):
         
         # Construimos la fila
         fila = {
-            "fecha_consulta": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), # Hora exacta de consulta
+            "fecha_consulta": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "origen": origen,
             "destino": DESTINO,
             "fecha_salida": fecha_salida,
@@ -134,6 +154,8 @@ def gestionar_historial(origen, datos_vuelo, fecha_salida):
             "hora_llegada": datos_vuelo['llegada_iso'].split("T")[1],
             "duracion_minutos": datos_vuelo['duracion_min'],
             "escalas": datos_vuelo['escalas'],
+            "aeropuertos_escala": datos_vuelo['aeropuertos_escala'],  # NUEVO
+            "ruta_completa": datos_vuelo['ruta_completa'],  # NUEVO
             "aerolinea": datos_vuelo['aerolinea'],
             "numero_vuelo": datos_vuelo['num_vuelo'],
             "clase": datos_vuelo['clase'],

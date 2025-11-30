@@ -1,0 +1,122 @@
+{
+    "MAD": {
+        "lat": 40.4983,
+        "lon": -3.5676,
+        "name": "Madrid",
+        "city": "Madrid, Spain"
+    },
+    "BCN": {
+        "lat": 41.2974,
+        "lon": 2.0833,
+        "name": "Barcelona",
+        "city": "Barcelona, Spain"
+    },
+    "DPS": {
+        "lat": -8.7467,
+        "lon": 115.1667,
+        "name": "Denpasar (Bali)",
+        "city": "Bali, Indonesia"
+    },
+    "DXB": {
+        "lat": 25.2532,
+        "lon": 55.3657,
+        "name": "Dubai",
+        "city": "Dubai, UAE"
+    },
+    "DOH": {
+        "lat": 25.2731,
+        "lon": 51.6080,
+        "name": "Doha",
+        "city": "Doha, Qatar"
+    },
+    "IST": {
+        "lat": 41.2753,
+        "lon": 28.7519,
+        "name": "Istanbul",
+        "city": "Istanbul, Turkey"
+    },
+    "AUH": {
+        "lat": 24.4330,
+        "lon": 54.6511,
+        "name": "Abu Dhabi",
+        "city": "Abu Dhabi, UAE"
+    },
+    "AMS": {
+        "lat": 52.3105,
+        "lon": 4.7683,
+        "name": "Amsterdam",
+        "city": "Amsterdam, Netherlands"
+    },
+    "CDG": {
+        "lat": 49.0097,
+        "lon": 2.5479,
+        "name": "Paris CDG",
+        "city": "Paris, France"
+    },
+    "SIN": {
+        "lat": 1.3644,
+        "lon": 103.9915,
+        "name": "Singapore",
+        "city": "Singapore"
+    },
+    "HKG": {
+        "lat": 22.3080,
+        "lon": 113.9185,
+        "name": "Hong Kong",
+        "city": "Hong Kong"
+    },
+    "BKK": {
+        "lat": 13.6900,
+        "lon": 100.7501,
+        "name": "Bangkok",
+        "city": "Bangkok, Thailand"
+    },
+    "KUL": {
+        "lat": 2.7456,
+        "lon": 101.7072,
+        "name": "Kuala Lumpur",
+        "city": "Kuala Lumpur, Malaysia"
+    },
+    "CGK": {
+        "lat": -6.1256,
+        "lon": 106.6559,
+        "name": "Jakarta",
+        "city": "Jakarta, Indonesia"
+    },
+    "DEL": {
+        "lat": 28.5562,
+        "lon": 77.1000,
+        "name": "Delhi",
+        "city": "Delhi, India"
+    },
+    "BOM": {
+        "lat": 19.0896,
+        "lon": 72.8656,
+        "name": "Mumbai",
+        "city": "Mumbai, India"
+    },
+    "PEK": {
+        "lat": 40.0799,
+        "lon": 116.6031,
+        "name": "Beijing",
+        "city": "Beijing, China"
+    },
+    "PVG": {
+        "lat": 31.1443,
+        "lon": 121.8083,
+        "name": "Shanghai",
+        "city": "Shanghai, China"
+    },
+    "ICN": {
+        "lat": 37.4602,
+        "lon": 126.4407,
+        "name": "Seoul",
+        "city": "Seoul, South Korea"
+    },
+    "NRT": {
+        "lat": 35.7720,
+        "lon": 140.3929,
+        "name": "Tokyo Narita",
+        "city": "Tokyo, Japan"
+    }
+}
