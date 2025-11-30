@@ -1,0 +1,6 @@
+[theme]
+primaryColor = "#111111"       # Negro casi puro para interacciones
+backgroundColor = "#F7F9FB"    # Gris muy muy claro (Fondo de la app)
+secondaryBackgroundColor = "#FFFFFF" # Blanco puro (Barra lateral)
+textColor = "#171717"          # Texto casi negro
+font = "sans serif"

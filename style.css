@@ -1,0 +1,76 @@
+/* style.css */
+
+/* Importar fuente Inter */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Fondo principal gris suave */
+.stApp {
+    background-color: #F7F9FB;
+}
+
+/* Títulos */
+h1, h2, h3 {
+    color: #111111;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+}
+
+/* TARJETAS (Metrics) */
+div[data-testid="stMetric"] {
+    background-color: #FFFFFF;
+    border: 1px solid #EAEAEA;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+    transition: all 0.3s ease;
+}
+
+div[data-testid="stMetric"]:hover {
+    box-shadow: 0 4px 10px rgba(0,0,0,0.08);
+    border-color: #D0D0D0;
+}
+
+div[data-testid="stMetricLabel"] {
+    color: #666666;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+div[data-testid="stMetricValue"] {
+    color: #111111;
+    font-size: 28px;
+    font-weight: 600;
+}
+
+/* Contenedores de gráficos */
+.plotly-graph-div {
+    background-color: #FFFFFF;
+    border-radius: 12px;
+    padding: 10px;
+    border: 1px solid #EAEAEA;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #FFFFFF;
+    border-right: 1px solid #EAEAEA;
+}
+
+/* Botones */
+.stButton>button {
+    background-color: #111111;
+    color: white;
+    border-radius: 8px;
+    border: none;
+    padding: 10px 20px;
+    font-weight: 500;
+}
+.stButton>button:hover {
+    background-color: #333333;
+    color: white;
+}
