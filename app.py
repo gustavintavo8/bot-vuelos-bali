@@ -5,7 +5,6 @@ import plotly.graph_objects as go
 from datetime import datetime
 import json
 from io import BytesIO
-import base64
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -466,11 +465,49 @@ with tab4:
     df_display['🎯'] = df_display['precio_total'] < PRECIO_OBJETIVO
     df_display['🎯'] = df_display['🎯'].map({True: '✅', False: '❌'})
     
+    # Ordenamos columnas y aplicamos configuración visual bonita
     st.dataframe(
-        df_display[['fecha_salida', 'origen', 'nombre_aerolinea', 'precio_total', 
-                   'duracion_horas', 'score', '🎯']].sort_values("score", ascending=False),
-        use_container_width=True, hide_index=True,
+        df_display[[
+            'fecha_consulta',  # <--- NUEVO: Fecha en que el bot vio el precio
+            'fecha_salida', 
+            'origen', 
+            'nombre_aerolinea', 
+            'precio_total', 
+            'duracion_horas', 
+            'score', 
+            '🎯'
+        ]].sort_values("fecha_consulta", ascending=False), # Ordenar por lo más reciente encontrado
+        use_container_width=True, 
+        hide_index=True,
         column_config={
-            "score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100)
+            "fecha_consulta": st.column_config.DatetimeColumn(
+                "🔎 Encontrado el...",
+                format="DD-MM-YYYY HH:mm", # Muestra día y hora exacta
+                help="Fecha y hora en que el bot encontró este precio"
+            ),
+            "fecha_salida": st.column_config.DateColumn(
+                "🛫 Salida Vuelo", 
+                format="DD-MM-YYYY"
+            ),
+            "origen": "Origen",
+            "nombre_aerolinea": "Aerolínea",
+            "precio_total": st.column_config.NumberColumn(
+                "Precio Total",
+                format="%.0f €"
+            ),
+            "duracion_horas": st.column_config.NumberColumn(
+                "Duración",
+                format="%.1f h"
+            ),
+            "score": st.column_config.ProgressColumn(
+                "Calidad", 
+                min_value=0, 
+                max_value=100,
+                format="%.2f"
+            ),
+            "🎯": st.column_config.TextColumn(
+                "Obj",
+                help="¿Está por debajo de tu precio objetivo?"
+            )
         }
     )
