@@ -45,6 +45,77 @@ def cargar_datos():
         df['fecha_consulta'] = pd.to_datetime(df['fecha_consulta'])
         df['fecha_salida'] = pd.to_datetime(df['fecha_salida'])
         df['nombre_aerolinea'] = df['aerolinea'].apply(get_nombre_aerolinea)
+        df['duracion_horas'] = df['duracion_minutos'] / 60
+        return df
+    except FileNotFoundError:
+        return None
+
+# --- FUNCIÓN GRÁFICA: CALENDAR HEATMAP (Minimalist Style) ---
+def plot_calendar_heatmap(df):
+    # 1. Preparar datos
+    df_cal = df.groupby('fecha_salida')['precio_total'].min().reset_index()
+    
+    # Crear columnas auxiliares
+    df_cal['semana'] = df_cal['fecha_salida'].dt.isocalendar().week
+    df_cal['dia_semana'] = df_cal['fecha_salida'].dt.dayofweek # 0=Lun, 6=Dom
+    df_cal['fecha_str'] = df_cal['fecha_salida'].dt.strftime('%d-%b')
+    
+    # Pivotar para matrices
+    pivot_precio = df_cal.pivot(index='dia_semana', columns='semana', values='precio_total')
+    pivot_fecha = df_cal.pivot(index='dia_semana', columns='semana', values='fecha_str')
+    
+    # Asegurar rango completo de semanas y días
+    if not df_cal.empty:
+        min_sem = int(df_cal['semana'].min())
+        max_sem = int(df_cal['semana'].max())
+        semanas = list(range(min_sem, max_sem + 1))
+        
+        pivot_precio = pivot_precio.reindex(index=range(7), columns=semanas)
+        pivot_fecha = pivot_fecha.reindex(index=range(7), columns=semanas)
+    else:
+        semanas = []
+        
+    # Matrices finales
+    z_values = pivot_precio.values
+    customdata = pivot_fecha.fillna('').values
+    # Formatear texto: precio si existe, vacío si no
+    text_values = pivot_precio.applymap(lambda x: f"{x:.0f}€" if pd.notnull(x) else "").values
+
+    # 2. Crear figura
+    fig = go.Figure(data=go.Heatmap(
+        z=z_values,
+        x=semanas,
+        y=['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+        text=text_values,
+        customdata=customdata,
+        texttemplate="%{text}", 
+        textfont={"size": 11, "family": "Inter", "color": "white"},
+        hovertemplate="<b>%{customdata}</b><br>Semana %{x}<br>Precio: %{z:.0f}€<extra></extra>",
+        colorscale=[[0, '#111111'], [1, '#DDDDDD']], 
+        showscale=False,
+        xgap=4, 
+        ygap=4
+    ))
+    
+    fig.update_layout(
+        title=dict(text="📅 Calendario de Precios (Negro = Más Barato)", font=dict(size=16, color="#111")),
+        xaxis_title="",
+        yaxis_title="",
+        yaxis=dict(autorange="reversed", showticklabels=True), 
+        xaxis=dict(showticklabels=False), 
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(t=40, l=0, r=0, b=0),
+        height=250,
+        font={'family': 'Inter', 'color': '#333'}
+    )
+    
+    return fig
+
+# --- EJECUCIÓN PRINCIPAL ---
+df = cargar_datos()
+
+if df is None:
     st.error("⚠️ Esperando datos del bot...")
     st.stop()
 
