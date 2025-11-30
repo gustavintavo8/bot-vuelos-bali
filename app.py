@@ -3,6 +3,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
+import json
+from io import BytesIO
+import base64
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -13,18 +16,28 @@ st.set_page_config(
 )
 
 # --- CONSTANTES ---
-PRECIO_OBJETIVO = 800  # 🎯 Precio objetivo para alertas
-ASIENTOS_CRITICOS = 5  # ⚠️ Umbral de asientos para alertas
+PRECIO_OBJETIVO = 800
+ASIENTOS_CRITICOS = 5
 
-# --- FUNCIÓN PARA CARGAR CSS EXTERNO ---
+# --- CARGAR AEROPUERTOS ---
+@st.cache_data
+def cargar_aeropuertos():
+    try:
+        with open('airports.json', 'r') as f:
+            return json.load(f)
+    except:
+        return {}
+
+AIRPORTS = cargar_aeropuertos()
+
+# --- FUNCIÓN PARA CARGAR CSS ---
 def cargar_css(nombre_archivo):
     try:
         with open(nombre_archivo) as f:
             st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
     except FileNotFoundError:
-        st.warning(f"⚠️ Falta style.css")
+        pass
 
-# Cargar estilos minimalistas
 cargar_css("style.css")
 
 # --- DICCIONARIO AEROLÍNEAS ---
@@ -40,12 +53,10 @@ def get_nombre_aerolinea(codigo):
     return AEROLINEAS_NOMBRES.get(codigo, codigo)
 
 # --- CARGA DE DATOS ---
-ARCHIVO_CSV = "historial_extendido.csv"
-
 @st.cache_data
 def cargar_datos():
     try:
-        df = pd.read_csv(ARCHIVO_CSV)
+        df = pd.read_csv("historial_extendido.csv")
         df['fecha_consulta'] = pd.to_datetime(df['fecha_consulta'])
         df['fecha_salida'] = pd.to_datetime(df['fecha_salida'])
         df['nombre_aerolinea'] = df['aerolinea'].apply(get_nombre_aerolinea)
@@ -55,125 +66,193 @@ def cargar_datos():
     except FileNotFoundError:
         return None
 
-# --- 🏆 FUNCIÓN: CALCULAR SCORE DE VUELO ---
+# --- FUNCIONES DE SCORING ---
 def calcular_score_vuelo(row):
-    """Calcula un score de 0-100 basado en múltiples factores"""
-    # Normalizar precio (invertido: menor precio = mejor score)
     precio_norm = 100 - ((row['precio_total'] - 500) / 10)
     precio_norm = max(0, min(100, precio_norm))
     
-    # Normalizar duración (invertido: menor duración = mejor)
     duracion_norm = 100 - ((row['duracion_horas'] - 10) * 5)
     duracion_norm = max(0, min(100, duracion_norm))
     
-    # Horario (preferencia por salidas entre 8h-22h)
     try:
         hora_salida = int(row['hora_salida'].split(':')[0])
-        if 8 <= hora_salida <= 22:
-            horario_score = 100
-        else:
-            horario_score = 50
+        horario_score = 100 if 8 <= hora_salida <= 22 else 50
     except:
         horario_score = 50
     
-    # Asientos disponibles (más asientos = mejor)
     try:
         asientos = int(row['asientos_disponibles'])
         asientos_score = min(100, asientos * 20)
     except:
         asientos_score = 50
     
-    # Pesos
-    score_total = (
-        precio_norm * 0.4 +
-        duracion_norm * 0.3 +
-        horario_score * 0.2 +
-        asientos_score * 0.1
-    )
-    
+    score_total = (precio_norm * 0.4 + duracion_norm * 0.3 + horario_score * 0.2 + asientos_score * 0.1)
     return round(score_total, 1)
 
-# --- 🏆 FUNCIÓN: OBTENER TOP OFERTAS ---
 def obtener_top_ofertas(df, n=3):
-    """Obtiene los mejores N vuelos según scoring"""
     if df.empty:
         return pd.DataFrame()
     df_copy = df.copy()
     df_copy['score'] = df_copy.apply(calcular_score_vuelo, axis=1)
-    top = df_copy.nlargest(n, 'score')
-    return top
+    return df_copy.nlargest(n, 'score')
 
-# --- 📈 FUNCIÓN: CALCULAR TENDENCIA ---
-def calcular_tendencia_precio(df, fecha_salida):
-    """Calcula la tendencia de precio para una fecha específica"""
+# --- PREDICCIÓN DE PRECIOS ---
+def predecir_tendencia(df, fecha_salida):
     df_fecha = df[df['fecha_salida'] == fecha_salida].sort_values('fecha_consulta')
     
     if len(df_fecha) < 2:
-        return "➡️", 0, "Datos insuficientes"
+        return "➡️", 0, "Datos insuficientes", None
     
     precios = df_fecha['precio_total'].values
-    primer_precio = precios[0]
-    ultimo_precio = precios[-1]
-    cambio = ultimo_precio - primer_precio
-    cambio_pct = (cambio / primer_precio) * 100
+    cambio = precios[-1] - precios[0]
+    cambio_pct = (cambio / precios[0]) * 100
+    
+    # Predicción simple: proyectar tendencia 7 días
+    prediccion = precios[-1] + (cambio * 0.5)  # Asume 50% de la tendencia continúa
     
     if cambio_pct < -2:
-        return "📉", cambio_pct, "¡Compra ahora!"
+        return "📉", cambio_pct, "¡Compra ahora!", prediccion
     elif cambio_pct > 2:
-        return "📈", cambio_pct, "Espera un poco"
+        return "📈", cambio_pct, "Espera un poco", prediccion
     else:
-        return "➡️", cambio_pct, "Precio estable"
+        return "➡️", cambio_pct, "Precio estable", prediccion
 
-# --- 💰 FUNCIÓN: GRÁFICO IMPUESTOS ---
-def crear_grafico_impuestos(df):
-    """Crea gráfico de barras apiladas: precio base vs impuestos"""
-    df_agg = df.groupby('nombre_aerolinea').agg({
-        'precio_base': 'mean',
-        'impuestos': 'mean',
-        'porcentaje_impuestos': 'mean'
-    }).reset_index()
+# --- SISTEMA DE ALERTAS ---
+def check_alertas(df, config):
+    alertas = []
+    vuelos_alertados = df.copy()
     
+    if config['precio_max'] > 0:
+        mask = vuelos_alertados['precio_total'] < config['precio_max']
+        if mask.sum() > 0:
+            alertas.append(f"🔥 {mask.sum()} vuelo(s) bajo {config['precio_max']}€")
+            vuelos_alertados.loc[mask, 'alerta_precio'] = True
+    
+    if config['duracion_max'] > 0:
+        mask = vuelos_alertados['duracion_horas'] < config['duracion_max']
+        if mask.sum() > 0:
+            alertas.append(f"⚡ {mask.sum()} vuelo(s) < {config['duracion_max']}h")
+            vuelos_alertados.loc[mask, 'alerta_duracion'] = True
+    
+    if config['score_min'] > 0:
+        vuelos_alertados['score'] = vuelos_alertados.apply(calcular_score_vuelo, axis=1)
+        mask = vuelos_alertados['score'] > config['score_min']
+        if mask.sum() > 0:
+            alertas.append(f"⭐ {mask.sum()} vuelo(s) score > {config['score_min']}")
+            vuelos_alertados.loc[mask, 'alerta_score'] = True
+    
+    return alertas, vuelos_alertados
+
+# --- MAPA DE RUTAS ---
+def crear_mapa_rutas(df):
     fig = go.Figure()
     
-    fig.add_trace(go.Bar(
-        name='Precio Base',
-        x=df_agg['nombre_aerolinea'],
-        y=df_agg['precio_base'],
-        marker_color='#111111',
-        text=df_agg['precio_base'].round(0),
-        textposition='inside',
-        textfont=dict(color='white')
-    ))
+    # Colores por rango de precio
+    def get_color(precio):
+        if precio < 800:
+            return '#00FF00'  # Verde
+        elif precio < 900:
+            return '#FFFF00'  # Amarillo
+        else:
+            return '#FF0000'  # Rojo
     
-    fig.add_trace(go.Bar(
-        name='Impuestos',
-        x=df_agg['nombre_aerolinea'],
-        y=df_agg['impuestos'],
-        marker_color='#999999',
-        text=df_agg['impuestos'].round(0),
-        textposition='inside',
-        textfont=dict(color='white')
-    ))
+    rutas_unicas = {}
+    
+    for _, vuelo in df.iterrows():
+        # Parsear ruta
+        if pd.isna(vuelo['aeropuertos_escala']) or vuelo['aeropuertos_escala'] == '':
+            # Vuelo directo
+            ruta = [vuelo['origen'], vuelo['destino']]
+        else:
+            # Con escalas
+            escalas = vuelo['aeropuertos_escala'].split(',')
+            ruta = [vuelo['origen']] + escalas + [vuelo['destino']]
+        
+        ruta_key = '-'.join(ruta)
+        precio = vuelo['precio_total']
+        
+        if ruta_key not in rutas_unicas or precio < rutas_unicas[ruta_key]['precio']:
+            rutas_unicas[ruta_key] = {'ruta': ruta, 'precio': precio}
+    
+    # Dibujar rutas
+    for ruta_info in rutas_unicas.values():
+        ruta = ruta_info['ruta']
+        precio = ruta_info['precio']
+        color = get_color(precio)
+        
+        lons = []
+        lats = []
+        nombres = []
+        
+        for airport_code in ruta:
+            if airport_code in AIRPORTS:
+                lons.append(AIRPORTS[airport_code]['lon'])
+                lats.append(AIRPORTS[airport_code]['lat'])
+                nombres.append(AIRPORTS[airport_code]['name'])
+        
+        if len(lons) >= 2:
+            # Línea de ruta
+            fig.add_trace(go.Scattergeo(
+                lon=lons,
+                lat=lats,
+                mode='lines+markers',
+                line=dict(width=2, color=color),
+                marker=dict(size=8, color=color),
+                name=f"{ruta[0]}→{ruta[-1]} ({precio:.0f}€)",
+                hovertemplate='<b>%{text}</b><br>Precio: ' + f'{precio:.0f}€<extra></extra>',
+                text=nombres
+            ))
+    
+    fig.update_geos(
+        projection_type="natural earth",
+        showcountries=True,
+        showcoastlines=True,
+        showland=True,
+        landcolor='rgb(243, 243, 243)',
+        coastlinecolor='rgb(204, 204, 204)',
+        countrycolor='rgb(204, 204, 204)',
+        lataxis_range=[-20, 60],
+        lonaxis_range=[-20, 130]
+    )
     
     fig.update_layout(
-        barmode='stack',
-        title=dict(text="💰 Desglose: Precio Base vs Impuestos", font=dict(size=16, color="#111")),
-        template='plotly_white',
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        xaxis_title="",
-        yaxis_title="Precio (€)",
-        font={'family': 'Inter'},
+        title=dict(text="🗺️ Mapa de Rutas a Bali", font=dict(size=20, color="#111")),
         showlegend=True,
-        legend=dict(orientation="h", y=1.1)
+        legend=dict(orientation="v", y=0.5),
+        height=600,
+        margin=dict(l=0, r=0, t=40, b=0),
+        font={'family': 'Inter'}
     )
     
     return fig
 
-# --- FUNCIÓN GRÁFICA: CALENDAR HEATMAP ---
+# --- EXPORTAR FUNCIONES ---
+def exportar_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Hoja 1: Resumen
+        resumen = pd.DataFrame({
+            'Métrica': ['Mejor Precio', 'Precio Medio', 'Vuelos Totales', 'Aerolíneas'],
+            'Valor': [
+                f"{df['precio_total'].min():.0f}€",
+                f"{df['precio_total'].mean():.0f}€",
+                len(df),
+                df['nombre_aerolinea'].nunique()
+            ]
+        })
+        resumen.to_excel(writer, sheet_name='Resumen', index=False)
+        
+        # Hoja 2: Todos los vuelos
+        df_export = df[['fecha_salida', 'origen', 'nombre_aerolinea', 'precio_total', 
+                       'duracion_horas', 'escalas', 'asientos_disponibles']].copy()
+        df_export.to_excel(writer, sheet_name='Vuelos', index=False)
+    
+    output.seek(0)
+    return output
+
+# --- GRÁFICOS ---
 def plot_calendar_heatmap(df):
     df_cal = df.groupby('fecha_salida')['precio_total'].min().reset_index()
-    
     df_cal['semana'] = df_cal['fecha_salida'].dt.isocalendar().week
     df_cal['dia_semana'] = df_cal['fecha_salida'].dt.dayofweek
     df_cal['fecha_str'] = df_cal['fecha_salida'].dt.strftime('%d-%b')
@@ -185,48 +264,51 @@ def plot_calendar_heatmap(df):
         min_sem = int(df_cal['semana'].min())
         max_sem = int(df_cal['semana'].max())
         semanas = list(range(min_sem, max_sem + 1))
-        
         pivot_precio = pivot_precio.reindex(index=range(7), columns=semanas)
         pivot_fecha = pivot_fecha.reindex(index=range(7), columns=semanas)
     else:
         semanas = []
-        
+    
     z_values = pivot_precio.values
     customdata = pivot_fecha.fillna('').values
     text_values = pivot_precio.applymap(lambda x: f"{x:.0f}€" if pd.notnull(x) else "").values
 
     fig = go.Figure(data=go.Heatmap(
-        z=z_values,
-        x=semanas,
+        z=z_values, x=semanas,
         y=['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
-        text=text_values,
-        customdata=customdata,
+        text=text_values, customdata=customdata,
         texttemplate="%{text}", 
         textfont={"size": 11, "family": "Inter", "color": "white"},
-        hovertemplate="<b>%{customdata}</b><br>Semana %{x}<br>Precio: %{z:.0f}€<extra></extra>",
+        hovertemplate="<b>%{customdata}</b><br>Precio: %{z:.0f}€<extra></extra>",
         colorscale=[[0, '#111111'], [1, '#DDDDDD']], 
-        showscale=False,
-        xgap=4, 
-        ygap=4
+        showscale=False, xgap=4, ygap=4
     ))
     
     fig.update_layout(
-        title=dict(text="📅 Calendario de Precios (Negro = Más Barato)", font=dict(size=16, color="#111")),
-        xaxis_title="",
-        yaxis_title="",
-        yaxis=dict(autorange="reversed", showticklabels=True), 
-        xaxis=dict(showticklabels=False), 
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=40, l=0, r=0, b=0),
-        height=250,
-        font={'family': 'Inter', 'color': '#333'}
+        title=dict(text="📅 Calendario de Precios", font=dict(size=16, color="#111")),
+        yaxis=dict(autorange="reversed"), xaxis=dict(showticklabels=False),
+        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+        margin=dict(t=40, l=0, r=0, b=0), height=250, font={'family': 'Inter'}
     )
+    return fig
+
+def crear_grafico_impuestos(df):
+    df_agg = df.groupby('nombre_aerolinea').agg({
+        'precio_base': 'mean', 'impuestos': 'mean'
+    }).reset_index()
     
+    fig = go.Figure()
+    fig.add_trace(go.Bar(name='Precio Base', x=df_agg['nombre_aerolinea'], 
+                         y=df_agg['precio_base'], marker_color='#111111'))
+    fig.add_trace(go.Bar(name='Impuestos', x=df_agg['nombre_aerolinea'], 
+                         y=df_agg['impuestos'], marker_color='#999999'))
+    
+    fig.update_layout(barmode='stack', title="💰 Desglose de Precios",
+                     template='plotly_white', paper_bgcolor='rgba(0,0,0,0)',
+                     font={'family': 'Inter'}, legend=dict(orientation="h", y=1.1))
     return fig
 
 # ========== EJECUCIÓN PRINCIPAL ==========
-
 df = cargar_datos()
 
 if df is None:
@@ -237,241 +319,158 @@ if df is None:
 with st.sidebar:
     st.markdown("### ⚙️ Configuración")
     origen_sel = st.multiselect("Origen", df['origen'].unique(), default=df['origen'].unique())
-    aerolinea_sel = st.multiselect("Aerolínea", df['nombre_aerolinea'].unique(), default=df['nombre_aerolinea'].unique())
+    aerolinea_sel = st.multiselect("Aerolínea", df['nombre_aerolinea'].unique(), 
+                                   default=df['nombre_aerolinea'].unique())
     df_filtrado = df[(df['origen'].isin(origen_sel)) & (df['nombre_aerolinea'].isin(aerolinea_sel))]
     
     st.markdown("---")
     st.markdown("### 🎯 Precio Objetivo")
-    st.metric("Target", f"{PRECIO_OBJETIVO} €", help="Precio objetivo para alertas especiales")
-    
-    vuelos_bajo_objetivo = len(df_filtrado[df_filtrado['precio_total'] < PRECIO_OBJETIVO])
-    if vuelos_bajo_objetivo > 0:
-        st.success(f"🔥 {vuelos_bajo_objetivo} vuelo(s) bajo objetivo!")
-    else:
-        st.info("Sin vuelos bajo objetivo")
+    st.metric("Target", f"{PRECIO_OBJETIVO} €")
+    vuelos_bajo = len(df_filtrado[df_filtrado['precio_total'] < PRECIO_OBJETIVO])
+    if vuelos_bajo > 0:
+        st.success(f"🔥 {vuelos_bajo} vuelo(s) bajo objetivo!")
     
     st.markdown("---")
-    st.caption("v3.0 Enhanced Dashboard")
+    st.markdown("### 🔔 Alertas Personalizadas")
+    with st.expander("Configurar Alertas"):
+        alert_precio = st.number_input("Precio <", value=750, step=50, min_value=0)
+        alert_duracion = st.number_input("Duración <", value=16.0, step=0.5, min_value=0.0)
+        alert_score = st.slider("Score >", 0, 100, 85)
+    
+    alertas_config = {
+        'precio_max': alert_precio,
+        'duracion_max': alert_duracion,
+        'score_min': alert_score
+    }
+    
+    st.markdown("---")
+    st.markdown("### 💾 Exportar")
+    if st.button("📊 Descargar Excel"):
+        excel_data = exportar_excel(df_filtrado)
+        st.download_button(
+            label="⬇️ Descargar",
+            data=excel_data,
+            file_name=f"bali_flights_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    
+    st.markdown("---")
+    st.caption("v4.0 Advanced Features")
 
 if df_filtrado.empty:
     st.warning("Sin datos.")
     st.stop()
+
+# --- ALERTAS ACTIVAS ---
+alertas_list, df_con_alertas = check_alertas(df_filtrado, alertas_config)
+if alertas_list:
+    st.success(f"🔔 **ALERTAS ACTIVAS ({len(alertas_list)})**")
+    for alerta in alertas_list:
+        st.write(f"• {alerta}")
+    st.markdown("---")
 
 # --- HEADER ---
 st.title("Bali Flight Tracker")
 st.markdown("Monitorización en tiempo real • Precios en EUR")
 st.markdown("###")
 
-# --- 🎫 ALERTAS DE DISPONIBILIDAD ---
-vuelos_criticos = df_filtrado[df_filtrado['asientos_disponibles'] <= ASIENTOS_CRITICOS]
-if not vuelos_criticos.empty:
-    st.warning(f"⚠️ **ALERTA DE DISPONIBILIDAD**: {len(vuelos_criticos)} vuelo(s) con menos de {ASIENTOS_CRITICOS} asientos disponibles")
-
-# --- KPIS MEJORADOS ---
+# --- KPIS ---
 col1, col2, col3, col4, col5 = st.columns(5)
 vuelo_barato = df_filtrado.loc[df_filtrado['precio_total'].idxmin()]
-
 delta_objetivo = vuelo_barato['precio_total'] - PRECIO_OBJETIVO
-delta_color = "inverse" if delta_objetivo < 0 else "normal"
 
 col1.metric("Mejor Precio", f"{df_filtrado['precio_total'].min():.0f} €", 
-            delta=f"{delta_objetivo:.0f}€ vs objetivo", delta_color=delta_color)
+            delta=f"{delta_objetivo:.0f}€ vs objetivo", 
+            delta_color="inverse" if delta_objetivo < 0 else "normal")
 col2.metric("Precio Medio", f"{df_filtrado['precio_total'].mean():.0f} €")
 col3.metric("Aerolínea Top", vuelo_barato['nombre_aerolinea'])
 col4.metric("Duración Mín.", f"{vuelo_barato['duracion_horas']:.1f} h")
-col5.metric("Asientos Disp.", f"{int(vuelo_barato['asientos_disponibles'])}", 
-            help="Asientos disponibles en el vuelo más barato")
+col5.metric("Asientos Disp.", f"{int(vuelo_barato['asientos_disponibles'])}")
 
 st.markdown("###")
 
 # --- PESTAÑAS ---
-tab1, tab2, tab3 = st.tabs(["📊 Panorama General", "✈️ Análisis Aerolíneas", "📋 Datos Brutos"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Panorama", "✈️ Aerolíneas", "🗺️ Mapa de Rutas", "📋 Datos"])
 
-# ========== PESTAÑA 1: PANORAMA GENERAL ==========
+# === TAB 1 ===
 with tab1:
-    # 🏆 TOP 3 MEJORES OFERTAS
     st.markdown("### 🏆 Top 3 Mejores Ofertas")
     top_ofertas = obtener_top_ofertas(df_filtrado, 3)
     
     if not top_ofertas.empty:
-        cols_ofertas = st.columns(3)
+        cols = st.columns(3)
         medallas = ["🥇", "🥈", "🥉"]
         
         for idx, (_, vuelo) in enumerate(top_ofertas.iterrows()):
-            with cols_ofertas[idx]:
-                border_color = "#00AA00" if vuelo['precio_total'] < PRECIO_OBJETIVO else "#111111"
-                
+            with cols[idx]:
+                border = "#00AA00" if vuelo['precio_total'] < PRECIO_OBJETIVO else "#111111"
                 st.markdown(f"""
-                <div style="border: 2px solid {border_color}; border-radius: 10px; padding: 15px; background: #f9f9f9;">
-                    <h3 style="margin:0;">{medallas[idx]} Score: {vuelo['score']}/100</h3>
-                    <p style="font-size: 24px; font-weight: bold; margin: 5px 0;">{vuelo['precio_total']:.0f}€</p>
-                    <p style="margin: 5px 0;">✈️ {vuelo['nombre_aerolinea']}</p>
-                    <p style="margin: 5px 0;">📅 {vuelo['fecha_salida'].strftime('%d-%b-%Y')}</p>
-                    <p style="margin: 5px 0;">⏱️ {vuelo['duracion_horas']:.1f}h | 🎫 {int(vuelo['asientos_disponibles'])} asientos</p>
-                    <p style="margin: 5px 0;">🛫 {vuelo['origen']} → DPS</p>
+                <div style="border: 2px solid {border}; border-radius: 10px; padding: 15px; background: #f9f9f9;">
+                    <h3>{medallas[idx]} Score: {vuelo['score']}/100</h3>
+                    <p style="font-size: 24px; font-weight: bold;">{vuelo['precio_total']:.0f}€</p>
+                    <p>✈️ {vuelo['nombre_aerolinea']}</p>
+                    <p>📅 {vuelo['fecha_salida'].strftime('%d-%b-%Y')}</p>
+                    <p>⏱️ {vuelo['duracion_horas']:.1f}h | 🎫 {int(vuelo['asientos_disponibles'])}</p>
                 </div>
                 """, unsafe_allow_html=True)
-                
-                razones = []
-                if vuelo['precio_total'] < PRECIO_OBJETIVO:
-                    razones.append("🔥 Bajo precio objetivo")
-                if vuelo['duracion_horas'] < 18:
-                    razones.append("⚡ Duración corta")
-                if int(vuelo['asientos_disponibles']) > 5:
-                    razones.append("✅ Buena disponibilidad")
-                
-                if razones:
-                    st.caption("**Por qué es bueno:** " + " • ".join(razones))
     
     st.markdown("###")
     
-    # 📈 TENDENCIAS DE PRECIO
-    st.markdown("### 📈 Tendencias de Precio por Fecha")
-    
-    fechas_unicas = sorted(df_filtrado['fecha_salida'].unique())
-    if len(fechas_unicas) > 0:
-        cols_trend = st.columns(min(len(fechas_unicas), 5))
-        
-        for idx, fecha in enumerate(fechas_unicas[:5]):
-            with cols_trend[idx % 5]:
-                icono, cambio_pct, recomendacion = calcular_tendencia_precio(df_filtrado, fecha)
+    # PREDICCIONES
+    st.markdown("### 📊 Predicciones de Precio")
+    fechas = sorted(df_filtrado['fecha_salida'].unique())[:5]
+    if fechas:
+        cols_pred = st.columns(min(len(fechas), 5))
+        for idx, fecha in enumerate(fechas):
+            with cols_pred[idx]:
+                icono, cambio, rec, pred = predecir_tendencia(df_filtrado, fecha)
                 precio_actual = df_filtrado[df_filtrado['fecha_salida'] == fecha]['precio_total'].iloc[-1]
                 
-                st.metric(
-                    label=f"{icono} {fecha.strftime('%d-%b')}",
-                    value=f"{precio_actual:.0f}€",
-                    delta=f"{cambio_pct:+.1f}%"
-                )
-                st.caption(recomendacion)
+                st.metric(f"{icono} {fecha.strftime('%d-%b')}", f"{precio_actual:.0f}€", 
+                         delta=f"{cambio:+.1f}%")
+                st.caption(rec)
+                if pred:
+                    st.caption(f"Pred 7d: {pred:.0f}€")
     
     st.markdown("###")
-    
-    # CALENDARIO
     st.plotly_chart(plot_calendar_heatmap(df_filtrado), use_container_width=True)
     
-    st.markdown("###")
-    
-    # GRÁFICOS INFERIORES
     c1, c2 = st.columns(2)
-    
     with c1:
-        st.markdown("#### 🗓️ Precios por Fecha")
         df_dias = df_filtrado.groupby('fecha_salida')['precio_total'].min().reset_index()
-        fig_bar = px.bar(df_dias, x='fecha_salida', y='precio_total', text_auto='.0f')
-        fig_bar.update_traces(marker_color='#111111')
-        
-        fig_bar.add_hline(y=PRECIO_OBJETIVO, line_dash="dash", line_color="red", 
-                         annotation_text=f"Objetivo: {PRECIO_OBJETIVO}€", 
-                         annotation_position="right")
-        
-        fig_bar.update_layout(
-            template='plotly_white',
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            margin=dict(l=0, r=0, t=20, b=20),
-            font={'family': 'Inter'}
-        )
+        fig_bar = px.bar(df_dias, x='fecha_salida', y='precio_total')
+        fig_bar.add_hline(y=PRECIO_OBJETIVO, line_dash="dash", line_color="red")
+        fig_bar.update_layout(template='plotly_white', paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_bar, use_container_width=True)
-
+    
     with c2:
-        st.markdown("#### 📉 Evolución Temporal")
-        fig_line = px.line(
-            df_filtrado, x='fecha_consulta', y='precio_total', color='origen',
-            color_discrete_sequence=['#111111', '#999999'], markers=True
-        )
-        
-        fig_line.add_hline(y=PRECIO_OBJETIVO, line_dash="dash", line_color="red",
-                          annotation_text=f"Objetivo: {PRECIO_OBJETIVO}€")
-        
-        fig_line.update_layout(
-            template='plotly_white',
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            legend=dict(orientation="h", y=1.1),
-            margin=dict(l=0, r=0, t=20, b=20),
-            font={'family': 'Inter'}
-        )
+        fig_line = px.line(df_filtrado, x='fecha_consulta', y='precio_total', color='origen')
+        fig_line.add_hline(y=PRECIO_OBJETIVO, line_dash="dash", line_color="red")
+        fig_line.update_layout(template='plotly_white', paper_bgcolor='rgba(0,0,0,0)')
         st.plotly_chart(fig_line, use_container_width=True)
 
-# ========== PESTAÑA 2: ANÁLISIS AEROLÍNEAS ==========
+# === TAB 2 ===
 with tab2:
-    # 💰 ANÁLISIS DE IMPUESTOS
     st.plotly_chart(crear_grafico_impuestos(df_filtrado), use_container_width=True)
-    
-    col_imp1, col_imp2, col_imp3 = st.columns(3)
-    col_imp1.metric("Impuestos Promedio", f"{df_filtrado['impuestos'].mean():.0f}€")
-    col_imp2.metric("% Impuestos Promedio", f"{df_filtrado['porcentaje_impuestos'].mean():.1f}%")
-    
-    aerolinea_menos_impuestos = df_filtrado.groupby('nombre_aerolinea')['porcentaje_impuestos'].mean().idxmin()
-    col_imp3.metric("Menos Impuestos", aerolinea_menos_impuestos)
-    
-    st.markdown("###")
-    
-    st.markdown("#### ⏳ Calidad vs Precio")
-    fig_scatter = px.scatter(
-        df_filtrado, x='duracion_horas', y='precio_total',
-        color='nombre_aerolinea',
-        color_discrete_sequence=px.colors.sequential.Greys_r,
-        size='precio_total',
-        hover_data=['fecha_salida', 'asientos_disponibles']
-    )
-    fig_scatter.add_vline(x=20, line_dash="dash", line_color="#111111", annotation_text="20h")
-    fig_scatter.add_hline(y=PRECIO_OBJETIVO, line_dash="dash", line_color="red", 
-                         annotation_text=f"Objetivo: {PRECIO_OBJETIVO}€")
-    
-    fig_scatter.update_layout(
-        template='plotly_white',
-        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(showgrid=True, gridcolor='#F0F0F0'),
-        yaxis=dict(showgrid=True, gridcolor='#F0F0F0'),
-        font={'family': 'Inter'}
-    )
-    st.plotly_chart(fig_scatter, use_container_width=True)
-    
-    c3, c4 = st.columns(2)
-    with c3:
-        st.markdown("#### 🛫 Aerolíneas")
-        df_pie = df_filtrado['nombre_aerolinea'].value_counts().reset_index()
-        fig_pie = px.pie(
-            df_pie, values='count', names='nombre_aerolinea',
-            color_discrete_sequence=px.colors.sequential.Greys_r, hole=0.6
-        )
-        fig_pie.update_layout(template='plotly_white', showlegend=True)
-        st.plotly_chart(fig_pie, use_container_width=True)
-    
-    with c4:
-        st.markdown("#### 🎫 Disponibilidad de Asientos")
-        df_asientos = df_filtrado.groupby('nombre_aerolinea')['asientos_disponibles'].mean().reset_index()
-        fig_asientos = px.bar(df_asientos, x='nombre_aerolinea', y='asientos_disponibles',
-                             color='asientos_disponibles',
-                             color_continuous_scale=['#FF0000', '#FFAA00', '#00AA00'])
-        fig_asientos.update_layout(
-            template='plotly_white',
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            showlegend=False,
-            font={'family': 'Inter'}
-        )
-        st.plotly_chart(fig_asientos, use_container_width=True)
 
-# ========== PESTAÑA 3: DATOS BRUTOS ==========
+# === TAB 3: MAPA ===
 with tab3:
-    st.markdown("#### 📋 Detalle de Vuelos")
-    
+    st.markdown("### 🗺️ Rutas de Vuelo a Bali")
+    st.markdown("**Verde** = Barato (<800€) | **Amarillo** = Medio (800-900€) | **Rojo** = Caro (>900€)")
+    st.plotly_chart(crear_mapa_rutas(df_filtrado), use_container_width=True)
+
+# === TAB 4 ===
+with tab4:
     df_display = df_filtrado.copy()
     df_display['score'] = df_display.apply(calcular_score_vuelo, axis=1)
-    df_display['🎯 Bajo Objetivo'] = df_display['precio_total'] < PRECIO_OBJETIVO
-    df_display['🎯 Bajo Objetivo'] = df_display['🎯 Bajo Objetivo'].map({True: '✅', False: '❌'})
-    
-    df_display = df_display[['fecha_salida', 'origen', 'nombre_aerolinea', 'precio_total', 
-                             'duracion_horas', 'escalas', 'asientos_disponibles', 'score', '🎯 Bajo Objetivo']].sort_values("score", ascending=False)
+    df_display['🎯'] = df_display['precio_total'] < PRECIO_OBJETIVO
+    df_display['🎯'] = df_display['🎯'].map({True: '✅', False: '❌'})
     
     st.dataframe(
-        df_display,
-        use_container_width=True,
-        hide_index=True,
+        df_display[['fecha_salida', 'origen', 'nombre_aerolinea', 'precio_total', 
+                   'duracion_horas', 'score', '🎯']].sort_values("score", ascending=False),
+        use_container_width=True, hide_index=True,
         column_config={
-            "fecha_salida": st.column_config.DateColumn("Fecha Salida", format="DD-MM-YYYY"),
-            "precio_total": st.column_config.NumberColumn("Precio", format="%.0f €"),
-            "duracion_horas": st.column_config.NumberColumn("Duración", format="%.1f h"),
-            "score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100, format="%.1f"),
-            "asientos_disponibles": st.column_config.NumberColumn("Asientos", format="%d")
+            "score": st.column_config.ProgressColumn("Score", min_value=0, max_value=100)
         }
     )
