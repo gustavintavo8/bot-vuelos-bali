@@ -45,47 +45,6 @@ def cargar_datos():
         df['fecha_consulta'] = pd.to_datetime(df['fecha_consulta'])
         df['fecha_salida'] = pd.to_datetime(df['fecha_salida'])
         df['nombre_aerolinea'] = df['aerolinea'].apply(get_nombre_aerolinea)
-        df['duracion_horas'] = df['duracion_minutos'] / 60
-        return df
-    except FileNotFoundError:
-        return None
-
-# --- FUNCIÓN GRÁFICA: CALENDAR HEATMAP (Minimalist Style) ---
-def plot_calendar_heatmap(df):
-    # 1. Preparar datos
-    df_cal = df.groupby('fecha_salida')['precio_total'].min().reset_index()
-    
-        y=['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
-        text=matriz_precio_str,
-        customdata=matriz_fecha,
-        texttemplate="%{text}", 
-        textfont={"size": 11, "family": "Inter", "color": "white"}, # Texto blanco sobre fondo oscuro
-        hovertemplate="<b>%{customdata}</b><br>Semana %{x}<br>Precio: %{z:.0f}€<extra></extra>",
-        colorscale=[[0, '#111111'], [1, '#DDDDDD']], # Negro a Gris Claro
-        showscale=False,
-        xgap=4, # Huecos blancos entre cuadros (Look moderno)
-        ygap=4
-    ))
-    
-    fig.update_layout(
-        title=dict(text="📅 Calendario de Precios (Negro = Más Barato)", font=dict(size=16, color="#111")),
-        xaxis_title="",
-        yaxis_title="",
-        yaxis=dict(autorange="reversed", showticklabels=True), 
-        xaxis=dict(showticklabels=False), # Ocultamos números de semana para limpiar
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=40, l=0, r=0, b=0),
-        height=250,
-        font={'family': 'Inter', 'color': '#333'}
-    )
-    
-    return fig
-
-# --- EJECUCIÓN PRINCIPAL ---
-df = cargar_datos()
-
-if df is None:
     st.error("⚠️ Esperando datos del bot...")
     st.stop()
 
