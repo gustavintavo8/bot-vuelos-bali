@@ -18,7 +18,7 @@ def cargar_css(nombre_archivo):
         with open(nombre_archivo) as f:
             st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
     except FileNotFoundError:
-        st.warning(f"⚠️ No se encontró el archivo de estilos '{nombre_archivo}'.")
+        st.warning(f"⚠️ Falta style.css")
 
 # Cargar estilos minimalistas
 cargar_css("style.css")
@@ -50,52 +50,49 @@ def cargar_datos():
     except FileNotFoundError:
         return None
 
-# --- FUNCIÓN GRÁFICA: CALENDAR HEATMAP ---
+# --- FUNCIÓN GRÁFICA: CALENDAR HEATMAP (Minimalist Style) ---
 def plot_calendar_heatmap(df):
-    """Genera un mapa de calor tipo GitHub (Semana vs Día)"""
     # 1. Preparar datos
     df_cal = df.groupby('fecha_salida')['precio_total'].min().reset_index()
     
-    # Extraer metadatos de fecha
+    # Metadatos
     df_cal['semana'] = df_cal['fecha_salida'].dt.isocalendar().week
     df_cal['dia_semana'] = df_cal['fecha_salida'].dt.dayofweek # 0=Lun
     df_cal['texto_fecha'] = df_cal['fecha_salida'].dt.strftime('%d %b')
     df_cal['precio_texto'] = df_cal['precio_total'].apply(lambda x: f"{x:.0f}€")
     
-    # 2. Pivotar para matriz (Y=Día, X=Semana)
+    # 2. Pivotar
     matriz_precios = df_cal.pivot(index='dia_semana', columns='semana', values='precio_total')
-    matriz_hover = df_cal.pivot(index='dia_semana', columns='semana', values='texto_fecha')
     matriz_precio_str = df_cal.pivot(index='dia_semana', columns='semana', values='precio_texto')
+    matriz_fecha = df_cal.pivot(index='dia_semana', columns='semana', values='texto_fecha')
     
-    # 3. Combinar texto para el hover
-    # (Plotly a veces es caprichoso con matrices de texto mixtas, simplificamos el hover)
-    
-    # 4. Crear Heatmap
-    # Usamos escala de grises invertida: Negro = Barato, Blanco = Caro/Vacío
+    # 3. Heatmap
+    # Usamos escala de grises: Negro (#111) = Barato, Gris claro (#EEE) = Caro
     fig = go.Figure(data=go.Heatmap(
         z=matriz_precios,
         x=matriz_precios.columns,
         y=['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
-        text=matriz_precio_str, # Texto dentro del cuadro
+        text=matriz_precio_str,
+        customdata=matriz_fecha,
         texttemplate="%{text}", 
-        textfont={"size": 10, "family": "Inter"},
-        hovertemplate="<b>%{text}</b><br>Semana %{x}<br>Precio: %{z:.0f}€<extra></extra>",
-        colorscale='Greys', 
-        reversescale=True, # Oscuro = Bajo Precio (Mejor)
-        xgap=3, 
-        ygap=3,
-        showscale=False # Ocultar barra lateral para más limpieza
+        textfont={"size": 11, "family": "Inter", "color": "white"}, # Texto blanco sobre fondo oscuro
+        hovertemplate="<b>%{customdata}</b><br>Semana %{x}<br>Precio: %{z:.0f}€<extra></extra>",
+        colorscale=[[0, '#111111'], [1, '#DDDDDD']], # Negro a Gris Claro
+        showscale=False,
+        xgap=4, # Huecos blancos entre cuadros (Look moderno)
+        ygap=4
     ))
     
     fig.update_layout(
-        title=dict(text="📅 Calendario de Oportunidades (Más oscuro = Más barato)", font=dict(size=14)),
-        xaxis_title="Semana del Año",
+        title=dict(text="📅 Calendario de Precios (Negro = Más Barato)", font=dict(size=16, color="#111")),
+        xaxis_title="",
         yaxis_title="",
-        yaxis=dict(autorange="reversed"), # Lunes arriba
+        yaxis=dict(autorange="reversed", showticklabels=True), 
+        xaxis=dict(showticklabels=False), # Ocultamos números de semana para limpiar
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
-        margin=dict(t=40, l=20, r=20, b=20),
-        height=280,
+        margin=dict(t=40, l=0, r=0, b=0),
+        height=250,
         font={'family': 'Inter', 'color': '#333'}
     )
     
@@ -105,114 +102,95 @@ def plot_calendar_heatmap(df):
 df = cargar_datos()
 
 if df is None:
-    st.error("⚠️ Esperando datos del bot... (Archivo csv no encontrado)")
+    st.error("⚠️ Esperando datos del bot...")
     st.stop()
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.markdown("### ⚙️ Configuración")
-    
-    # Filtros
-    origenes = df['origen'].unique()
-    origen_sel = st.multiselect("Origen", origenes, default=origenes)
-    
-    aerolineas = df['nombre_aerolinea'].unique()
-    aerolinea_sel = st.multiselect("Aerolínea", aerolineas, default=aerolineas)
-    
-    # Aplicar Filtros
-    df_filtrado = df[
-        (df['origen'].isin(origen_sel)) & 
-        (df['nombre_aerolinea'].isin(aerolinea_sel))
-    ]
-    
+    origen_sel = st.multiselect("Origen", df['origen'].unique(), default=df['origen'].unique())
+    aerolinea_sel = st.multiselect("Aerolínea", df['nombre_aerolinea'].unique(), default=df['nombre_aerolinea'].unique())
+    df_filtrado = df[(df['origen'].isin(origen_sel)) & (df['nombre_aerolinea'].isin(aerolinea_sel))]
     st.markdown("---")
-    st.caption("v2.1 con Heatmap")
+    st.caption("v2.2 Heatmap + Minimalist")
 
 if df_filtrado.empty:
-    st.warning("Sin datos para estos filtros.")
+    st.warning("Sin datos.")
     st.stop()
 
 # --- HEADER ---
 st.title("Bali Flight Tracker")
 st.markdown("Monitorización en tiempo real • Precios en EUR")
-st.markdown("---")
+st.markdown("###") # Espaciador
+
+# --- KPIS ---
+col1, col2, col3, col4 = st.columns(4)
+vuelo_barato = df_filtrado.loc[df_filtrado['precio_total'].idxmin()]
+
+col1.metric("Mejor Precio", f"{df_filtrado['precio_total'].min():.0f} €")
+col2.metric("Precio Medio", f"{df_filtrado['precio_total'].mean():.0f} €")
+col3.metric("Aerolínea Top", vuelo_barato['nombre_aerolinea'])
+col4.metric("Duración Mín.", f"{vuelo_barato['duracion_horas']:.1f} h")
+
+st.markdown("###")
 
 # --- PESTAÑAS ---
 tab1, tab2, tab3 = st.tabs(["📊 Panorama General", "✈️ Análisis Aerolíneas", "📋 Datos Brutos"])
 
-# === PESTAÑA 1: PANORAMA ===
+# === PESTAÑA 1 ===
 with tab1:
-    # 1. KPIs
-    col1, col2, col3, col4 = st.columns(4)
-    vuelo_barato = df_filtrado.loc[df_filtrado['precio_total'].idxmin()]
-
-    col1.metric("Mejor Precio", f"{df_filtrado['precio_total'].min():.0f} €")
-    col2.metric("Precio Medio", f"{df_filtrado['precio_total'].mean():.0f} €")
-    col3.metric("Aerolínea Top", vuelo_barato['nombre_aerolinea'])
-    col4.metric("Duración Mín.", f"{vuelo_barato['duracion_horas']:.1f} h")
-
-    st.markdown("###") 
-
-    # 2. CALENDAR HEATMAP (NUEVO)
+    # 1. CALENDARIO (AQUÍ ESTÁ LA MAGIA QUE FALTABA)
     st.plotly_chart(plot_calendar_heatmap(df_filtrado), use_container_width=True)
-
+    
     st.markdown("###")
-
-    # 3. GRÁFICOS CLÁSICOS (Barras y Línea)
+    
+    # 2. GRÁFICOS INFERIORES
     c1, c2 = st.columns(2)
     
     with c1:
         st.markdown("#### 🗓️ Precios por Fecha")
         df_dias = df_filtrado.groupby('fecha_salida')['precio_total'].min().reset_index()
-        fig_bar = px.bar(df_dias, x='fecha_salida', y='precio_total')
+        fig_bar = px.bar(df_dias, x='fecha_salida', y='precio_total', text_auto='.0f')
         fig_bar.update_traces(marker_color='#111111')
         fig_bar.update_layout(
             template='plotly_white',
-            paper_bgcolor='rgba(0,0,0,0)', 
-            plot_bgcolor='rgba(0,0,0,0)',
-            margin=dict(l=20, r=20, t=20, b=20),
-            font={'family': 'Inter', 'color': '#333'}
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+            margin=dict(l=0, r=0, t=20, b=20),
+            font={'family': 'Inter'}
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
     with c2:
         st.markdown("#### 📉 Evolución Temporal")
-        COLOR_SCALE = ['#111111', '#555555', '#999999']
         fig_line = px.line(
             df_filtrado, x='fecha_consulta', y='precio_total', color='origen',
-            color_discrete_sequence=COLOR_SCALE,
-            markers=True
+            color_discrete_sequence=['#111111', '#999999'], markers=True
         )
         fig_line.update_layout(
             template='plotly_white',
-            paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
             legend=dict(orientation="h", y=1.1),
-            margin=dict(l=20, r=20, t=20, b=20),
-            font={'family': 'Inter', 'color': '#333'}
+            margin=dict(l=0, r=0, t=20, b=20),
+            font={'family': 'Inter'}
         )
         st.plotly_chart(fig_line, use_container_width=True)
 
-# === PESTAÑA 2: AEROLÍNEAS ===
+# === PESTAÑA 2 ===
 with tab2:
     st.markdown("#### ⏳ Calidad vs Precio")
     fig_scatter = px.scatter(
         df_filtrado, x='duracion_horas', y='precio_total',
         color='nombre_aerolinea',
         color_discrete_sequence=px.colors.sequential.Greys_r,
-        size='precio_total',
-        hover_data=['fecha_salida', 'escalas']
+        size='precio_total'
     )
-    # Línea de referencia 20h
     fig_scatter.add_vline(x=20, line_dash="dash", line_color="#111111", annotation_text="20h")
-    
     fig_scatter.update_layout(
         template='plotly_white',
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
         xaxis=dict(showgrid=True, gridcolor='#F0F0F0'),
         yaxis=dict(showgrid=True, gridcolor='#F0F0F0'),
-        font={'family': 'Inter', 'color': '#333'}
+        font={'family': 'Inter'}
     )
     st.plotly_chart(fig_scatter, use_container_width=True)
     
@@ -222,13 +200,12 @@ with tab2:
         df_pie = df_filtrado['nombre_aerolinea'].value_counts().reset_index()
         fig_pie = px.pie(
             df_pie, values='count', names='nombre_aerolinea',
-            color_discrete_sequence=px.colors.sequential.Greys_r,
-            hole=0.6
+            color_discrete_sequence=px.colors.sequential.Greys_r, hole=0.6
         )
         fig_pie.update_layout(template='plotly_white', showlegend=True)
         st.plotly_chart(fig_pie, use_container_width=True)
 
-# === PESTAÑA 3: DATOS ===
+# === PESTAÑA 3 ===
 with tab3:
     st.markdown("#### 📋 Detalle de Vuelos")
     st.dataframe(
