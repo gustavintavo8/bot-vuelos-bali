@@ -24,6 +24,7 @@ DIAS_A_ESCANEAR = 5
 DIAS_ESTANCIA = 10    
 MAX_HORAS = 20.0      
 PRECIO_MAXIMO = 1100
+PRECIO_OBJETIVO = 750  # 🎯 Precio objetivo para alertas especiales
 
 def enviar_telegram(mensaje):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -203,17 +204,32 @@ def main():
                     
                     print(f"✅ {str_ida} ({origen}): {datos['precio_total']}€ | {datos['aerolinea']} | {datos['duracion_min']} min")
 
-                    # Notificación Telegram (Simplificada)
-                    if estado in ["🆕 NUEVO", "📉 BAJADA"]:
+                    # 🎯 ALERTA ESPECIAL: Precio por debajo del objetivo
+                    precio_bajo_objetivo = datos['precio_total'] < PRECIO_OBJETIVO
+                    
+                    # Notificación Telegram (Simplificada + Alerta Objetivo)
+                    if estado in ["🆕 NUEVO", "📉 BAJADA"] or precio_bajo_objetivo:
                         hubo_novedades = True
-                        icono = "🟢" if estado == "📉 BAJADA" else "🔵"
+                        
+                        # Icono especial si está bajo el precio objetivo
+                        if precio_bajo_objetivo:
+                            icono = "🚨🔥"
+                        elif estado == "📉 BAJADA":
+                            icono = "🟢"
+                        else:
+                            icono = "🔵"
+                        
                         dur_h = datos['duracion_min'] / 60
                         
                         reporte_telegram += f"\n{icono} <b>{origen} ({str_ida})</b>"
                         reporte_telegram += f"\n💰 <b>{datos['precio_total']}€</b> ({dur_h:.1f}h)"
                         reporte_telegram += f"\n🏢 {datos['aerolinea']} (Vuelo {datos['num_vuelo']})"
                         
-                        if estado == "📉 BAJADA":
+                        # Mensaje especial para precio objetivo
+                        if precio_bajo_objetivo:
+                            reporte_telegram += f"\n🔥🔥🔥 ¡PRECIO BAJO OBJETIVO! 🚨🚨🚨"
+                            reporte_telegram += f"\n💥 ¡COMPRA YA! Solo {datos['precio_total']}€"
+                        elif estado == "📉 BAJADA":
                             reporte_telegram += f"\n🔥 ¡{abs(dif):.0f}€ menos!"
                         
                         # Link Skyscanner
