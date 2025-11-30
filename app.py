@@ -55,22 +55,6 @@ def plot_calendar_heatmap(df):
     # 1. Preparar datos
     df_cal = df.groupby('fecha_salida')['precio_total'].min().reset_index()
     
-    # Metadatos
-    df_cal['semana'] = df_cal['fecha_salida'].dt.isocalendar().week
-    df_cal['dia_semana'] = df_cal['fecha_salida'].dt.dayofweek # 0=Lun
-    df_cal['texto_fecha'] = df_cal['fecha_salida'].dt.strftime('%d %b')
-    df_cal['precio_texto'] = df_cal['precio_total'].apply(lambda x: f"{x:.0f}€")
-    
-    # 2. Pivotar
-    matriz_precios = df_cal.pivot(index='dia_semana', columns='semana', values='precio_total')
-    matriz_precio_str = df_cal.pivot(index='dia_semana', columns='semana', values='precio_texto')
-    matriz_fecha = df_cal.pivot(index='dia_semana', columns='semana', values='texto_fecha')
-    
-    # 3. Heatmap
-    # Usamos escala de grises: Negro (#111) = Barato, Gris claro (#EEE) = Caro
-    fig = go.Figure(data=go.Heatmap(
-        z=matriz_precios,
-        x=matriz_precios.columns,
         y=['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
         text=matriz_precio_str,
         customdata=matriz_fecha,
