@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -15,7 +16,7 @@ st.set_page_config(
 )
 
 # --- CONSTANTES ---
-PRECIO_OBJETIVO_DEFAULT = 750
+PRECIO_OBJETIVO_DEFAULT = int(os.environ.get("PRECIO_OBJETIVO", 800))
 ASIENTOS_CRITICOS = 5
 
 # --- CARGAR AEROPUERTOS ---
@@ -52,7 +53,7 @@ def get_nombre_aerolinea(codigo):
     return AEROLINEAS_NOMBRES.get(codigo, codigo)
 
 # --- CARGA DE DATOS ---
-@st.cache_data
+@st.cache_data(ttl=300)
 def cargar_datos():
     try:
         df = pd.read_csv("historial_extendido.csv")
@@ -270,7 +271,7 @@ def plot_calendar_heatmap(df):
     
     z_values = pivot_precio.values
     customdata = pivot_fecha.fillna('').values
-    text_values = pivot_precio.applymap(lambda x: f"{x:.0f}€" if pd.notnull(x) else "").values
+    text_values = pivot_precio.map(lambda x: f"{x:.0f}€" if pd.notnull(x) else "").values
 
     fig = go.Figure(data=go.Heatmap(
         z=z_values, x=semanas,

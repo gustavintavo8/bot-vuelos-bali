@@ -23,14 +23,29 @@ DIAS_A_ESCANEAR = 5
 DIAS_ESTANCIA = 10    
 MAX_HORAS = 20.0      
 PRECIO_MAXIMO = 1100
-PRECIO_OBJETIVO = 800
+PRECIO_OBJETIVO = int(os.environ.get("PRECIO_OBJETIVO", 800))
+
+CAMPOS_CSV = [
+    "fecha_consulta", "origen", "destino", "fecha_salida",
+    "hora_salida", "hora_llegada", "duracion_minutos",
+    "escalas", "aerolinea", "numero_vuelo", "clase", "asientos_disponibles",
+    "precio_total", "precio_base", "impuestos",
+    "aeropuertos_escala", "ruta_completa"
+]
+
+def _parse_duracion(dur_str):
+    h = int(m.group(1)) if (m := re.search(r'(\d+)H', dur_str)) else 0
+    mins = int(m.group(1)) if (m := re.search(r'(\d+)M', dur_str)) else 0
+    return h + (mins / 60)
 
 def enviar_telegram(mensaje):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": mensaje, "parse_mode": "HTML"}
-    try: requests.post(url, data=payload)
-    except: pass
+    try:
+        requests.post(url, data=payload)
+    except Exception as e:
+        print(f"Error Telegram: {e}")
 
 def analizar_vuelo(vuelo):
     itinerario = vuelo['itineraries'][0]
@@ -41,12 +56,7 @@ def analizar_vuelo(vuelo):
     llegada = segmentos[-1]['arrival']['at']
     duracion_str = itinerario['duration']
     
-    horas, minutos = 0, 0
-    match_h = re.search(r'(\d+)H', duracion_str)
-    match_m = re.search(r'(\d+)M', duracion_str)
-    if match_h: horas = int(match_h.group(1))
-    if match_m: minutos = int(match_m.group(1))
-    duracion_total_minutos = (horas * 60) + minutos
+    duracion_total_minutos = int(_parse_duracion(duracion_str) * 60)
 
     # 2. Detalles
     escalas = len(segmentos) - 1
@@ -105,18 +115,8 @@ def gestionar_historial(origen, datos_vuelo, fecha_salida):
         elif diferencia > 5: estado = "📈 SUBIDA"
         else: estado = "➖ IGUAL"
 
-    # --- CORRECCIÓN IMPORTANTE AQUÍ ---
-    # El orden debe coincidir EXACTAMENTE con tu CSV actual (Rutas al final)
-    campos = [
-        "fecha_consulta", "origen", "destino", "fecha_salida", 
-        "hora_salida", "hora_llegada", "duracion_minutos", 
-        "escalas", "aerolinea", "numero_vuelo", "clase", "asientos_disponibles",
-        "precio_total", "precio_base", "impuestos", 
-        "aeropuertos_escala", "ruta_completa"  # <--- MOVIDOS AL FINAL
-    ]
-    
     with open(ARCHIVO_HISTORIAL, mode='a', newline='', encoding='utf-8') as file:
-        writer = csv.DictWriter(file, fieldnames=campos)
+        writer = csv.DictWriter(file, fieldnames=CAMPOS_CSV)
         if not existe: writer.writeheader()
         
         fila = {
@@ -145,6 +145,10 @@ def main():
         print("❌ Error: Faltan claves API.")
         return
 
+    if not os.path.isfile(ARCHIVO_HISTORIAL):
+        with open(ARCHIVO_HISTORIAL, mode='w', newline='', encoding='utf-8') as f:
+            csv.DictWriter(f, fieldnames=CAMPOS_CSV).writeheader()
+
     amadeus = Client(client_id=API_KEY, client_secret=API_SECRET)
     print(f"📊 Buscando vuelos a {DESTINO}...")
     
@@ -163,7 +167,7 @@ def main():
                 res = amadeus.shopping.flight_offers_search.get(
                     originLocationCode=origen, destinationLocationCode=DESTINO,
                     departureDate=str_ida, returnDate=str_vuelta,
-                    adults=1, max=3, currencyCode='EUR'
+                    adults=1, max=10, currencyCode='EUR'
                 )
 
                 if not res.data: continue
@@ -171,11 +175,7 @@ def main():
                 # Buscar mejor opción
                 mejor_vuelo = None
                 for v in res.data:
-                    dur_str = v['itineraries'][0]['duration']
-                    h, m = 0, 0
-                    if 'H' in dur_str: h = int(re.search(r'(\d+)H', dur_str).group(1))
-                    if 'M' in dur_str: m = int(re.search(r'(\d+)M', dur_str).group(1))
-                    dur = h + (m/60)
+                    dur = _parse_duracion(v['itineraries'][0]['duration'])
                     precio = float(v['price']['total'])
                     
                     if dur <= MAX_HORAS and precio <= PRECIO_MAXIMO:
