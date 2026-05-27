@@ -40,7 +40,7 @@ jobs:
           else
             git commit -m "Actualizar datos extendidos"
             for i in 1 2 3; do
-              git push && break
+              git pull --rebase origin main && git push && break
               echo "Push fallido (intento $i/3), esperando 10s..."
               sleep 10
             done
